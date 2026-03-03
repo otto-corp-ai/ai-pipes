@@ -31,6 +31,9 @@ services:
     runtime: static
     buildCommand: cd client && npm install && npm run build
     staticPublishPath: client/dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://ai-pipes-api-vyqh.onrender.com
     routes:
       - type: rewrite
         source: /api/*
