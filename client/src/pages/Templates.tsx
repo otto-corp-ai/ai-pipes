@@ -7,7 +7,7 @@ import { FileText, Mail, Calendar, Target, ClipboardList, Copy } from 'lucide-re
 const BUILT_IN_TEMPLATES = [
   {
     name: 'Blog Post Pipeline',
-    description: 'Topic → Research → Draft → Edit → Output. Generate polished blog posts in one click.',
+    description: 'Enter a topic, auto-research key points, draft a blog post, then polish with an editor. Fully connected — just type and run.',
     icon: FileText, category: 'content', nodes: 5,
     canvasData: {
       nodes: [
@@ -28,7 +28,7 @@ const BUILT_IN_TEMPLATES = [
   },
   {
     name: 'Email Campaign Generator',
-    description: 'Audience → Subject Lines → Body Copy → A/B Variants. Complete campaign in minutes.',
+    description: 'Describe your audience and goal, then AI generates subject lines and persuasive body copy automatically.',
     icon: Mail, category: 'marketing', nodes: 4,
     canvasData: {
       nodes: [
@@ -47,7 +47,7 @@ const BUILT_IN_TEMPLATES = [
   },
   {
     name: 'Social Media Calendar',
-    description: 'Topic → Generate 30 Posts → Format per platform. A month of content in one run.',
+    description: 'Provide your brand topic and get a full 30-day posting calendar across Twitter, LinkedIn, and Instagram.',
     icon: Calendar, category: 'content', nodes: 3,
     canvasData: {
       nodes: [
@@ -63,7 +63,7 @@ const BUILT_IN_TEMPLATES = [
   },
   {
     name: 'Lead Qualifier',
-    description: 'Lead Data → Research → Score → Draft Personalized Outreach. Qualify leads at scale.',
+    description: 'Paste lead info, AI researches the company, scores fit, and drafts a personalized outreach email.',
     icon: Target, category: 'sales', nodes: 4,
     canvasData: {
       nodes: [
@@ -81,7 +81,7 @@ const BUILT_IN_TEMPLATES = [
   },
   {
     name: 'Meeting Notes → Action Items',
-    description: 'Notes → Extract Items → Assign → Format Email. Turn messy notes into clear actions.',
+    description: 'Paste raw meeting notes and get structured action items with owners, deadlines, and a ready-to-send email summary.',
     icon: ClipboardList, category: 'operations', nodes: 4,
     canvasData: {
       nodes: [

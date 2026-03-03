@@ -4,6 +4,7 @@ import { decrypt } from '../lib/encryption';
 import { db } from '../db';
 import { apiKeys } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
+import { processFile, transcribeAudio } from './file-processor';
 
 interface FlowNode {
   id: string;
@@ -222,6 +223,33 @@ export async function executeWorkflow(
       let cost = 0;
       
       switch (node.type) {
+        case 'file_input': {
+          const filePath = node.data.filePath;
+          if (!filePath) {
+            output = '[No file uploaded]';
+            break;
+          }
+          const result = await processFile(filePath, node.data.fileName || 'file', node.data.fileMimeType || 'text/plain');
+          // Audio transcription if we have an OpenAI key
+          if (result.type === 'audio') {
+            try {
+              const key = await getUserApiKey(userId, 'openai');
+              result.text = await transcribeAudio(filePath, key);
+            } catch {
+              result.text = '[Audio transcription failed - no OpenAI API key configured]';
+            }
+          }
+          // CSV loop mode: output JSON array of rows
+          if (result.rows && node.data.loopMode) {
+            output = JSON.stringify(result.rows);
+          } else if (result.base64) {
+            // Images: output base64 for downstream vision models
+            output = result.base64;
+          } else {
+            output = result.text;
+          }
+          break;
+        }
         case 'text_input': {
           output = resolveVariables(node.data.text || node.data.content || input, outputs, input);
           break;

@@ -13,8 +13,9 @@ import TextInputNode from '../components/nodes/TextInputNode';
 import TransformNode from '../components/nodes/TransformNode';
 import RouterNode from '../components/nodes/RouterNode';
 import OutputNode from '../components/nodes/OutputNode';
+import FileInputNode from '../components/nodes/FileInputNode';
 import NodeConfigPanel from '../components/NodeConfigPanel';
-import { ArrowLeft, Save, Play, Brain, FileText, Shuffle, GitBranch, Download, Clock, ChevronDown, ChevronUp, X, Sparkles } from 'lucide-react';
+import { ArrowLeft, Save, Play, Brain, FileText, Shuffle, GitBranch, Download, Clock, ChevronDown, ChevronUp, X, Sparkles, Paperclip } from 'lucide-react';
 
 const nodeTypes = {
   ai_model: AIModelNode,
@@ -22,11 +23,13 @@ const nodeTypes = {
   transform: TransformNode,
   router: RouterNode,
   output: OutputNode,
+  file_input: FileInputNode,
 };
 
 const PALETTE = [
-  { type: 'ai_model', label: 'AI Model', icon: Brain, color: 'text-purple-400' },
   { type: 'text_input', label: 'Text Input', icon: FileText, color: 'text-blue-400' },
+  { type: 'file_input', label: 'File Input', icon: Paperclip, color: 'text-teal-400' },
+  { type: 'ai_model', label: 'AI Model', icon: Brain, color: 'text-purple-400' },
   { type: 'transform', label: 'Transform', icon: Shuffle, color: 'text-amber-400' },
   { type: 'router', label: 'Router', icon: GitBranch, color: 'text-green-400' },
   { type: 'output', label: 'Output', icon: Download, color: 'text-cyan-400' },
@@ -71,6 +74,25 @@ function Editor() {
 
   const onConnect = useCallback((params: Connection) => {
     setEdges(eds => addEdge({ ...params, animated: true, style: { stroke: '#6366f1' } }, eds));
+
+    // Auto-wire: if target is an AI Model node, append variable reference to user prompt
+    if (params.source && params.target) {
+      setNodes(nds => {
+        const targetNode = nds.find(n => n.id === params.target);
+        const sourceNode = nds.find(n => n.id === params.source);
+        if (targetNode?.type === 'ai_model' && sourceNode) {
+          const currentPrompt = (targetNode.data as any).userPrompt || '';
+          const variable = `{{${sourceNode.id}.output}}`;
+          if (!currentPrompt.includes(variable)) {
+            return nds.map(n => n.id === params.target ? {
+              ...n,
+              data: { ...n.data, userPrompt: currentPrompt ? `${currentPrompt}\n\n${variable}` : variable }
+            } : n);
+          }
+        }
+        return nds;
+      });
+    }
   }, []);
 
   const onNodeClick = useCallback((_: any, node: Node) => {
@@ -100,6 +122,7 @@ function Editor() {
     const defaults: Record<string, any> = {
       ai_model: { label: 'AI Model', model: 'gpt-4o', temperature: 0.7, maxTokens: 2048, systemPrompt: '', userPrompt: '' },
       text_input: { label: 'Text Input', text: '{{input}}' },
+      file_input: { label: 'File Input', filePath: '', fileName: '', fileSize: 0, fileType: '', loopMode: false },
       transform: { label: 'Transform', operation: 'format' },
       router: { label: 'Router', condition: { type: 'contains', value: '' } },
       output: { label: 'Output', displayType: 'display' },
@@ -251,7 +274,7 @@ function Editor() {
             <Controls />
             <MiniMap
               nodeColor={(n) => {
-                const colors: Record<string, string> = { ai_model: '#a855f7', text_input: '#60a5fa', transform: '#fbbf24', router: '#34d399', output: '#22d3ee' };
+                const colors: Record<string, string> = { ai_model: '#a855f7', text_input: '#60a5fa', file_input: '#2dd4bf', transform: '#fbbf24', router: '#34d399', output: '#22d3ee' };
                 return colors[n.type || ''] || '#64748b';
               }}
               maskColor="rgba(15, 23, 42, 0.8)"

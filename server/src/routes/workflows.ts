@@ -1,10 +1,22 @@
 import { Router, Response } from 'express';
 import { db } from '../db';
-import { workflows, workflowRuns } from '../db/schema';
+import { workflows, workflowRuns, users } from '../db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { authMiddleware, AuthRequest } from '../lib/auth';
 import { executeWorkflow } from '../engine/executor';
 import { z } from 'zod';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { processFile, validateFileType, FILE_SIZE_LIMITS } from '../engine/file-processor';
+
+const uploadsDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+const upload = multer({
+  dest: uploadsDir,
+  limits: { fileSize: 500 * 1024 * 1024 }, // Max limit, checked per-tier below
+});
 
 function paramId(req: AuthRequest, key = 'id'): string {
   const v = req.params[key];
@@ -89,6 +101,9 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
       .where(and(eq(workflows.id, paramId(req)), eq(workflows.userId, req.user!.userId)))
       .returning();
     if (!wf) { res.status(404).json({ error: 'Not found' }); return; }
+    // Clean up uploaded files
+    const wfDir = path.join(uploadsDir, paramId(req));
+    if (fs.existsSync(wfDir)) fs.rmSync(wfDir, { recursive: true, force: true });
     res.json({ success: true });
   } catch (error) {
     console.error('Delete workflow error:', error);
@@ -171,6 +186,62 @@ router.get('/:workflowId/runs/:runId', async (req: AuthRequest, res: Response) =
   } catch (error) {
     console.error('Get run error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// File upload
+router.post('/:id/upload', upload.single('file'), async (req: AuthRequest, res: Response) => {
+  try {
+    const file = req.file;
+    if (!file) { res.status(400).json({ error: 'No file uploaded' }); return; }
+
+    // Check workflow ownership
+    const [wf] = await db.select().from(workflows)
+      .where(and(eq(workflows.id, paramId(req)), eq(workflows.userId, req.user!.userId)))
+      .limit(1);
+    if (!wf) { res.status(404).json({ error: 'Workflow not found' }); return; }
+
+    // Get user tier for size limit
+    const [user] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
+    const tier = user?.tier || 'free';
+    const maxSize = FILE_SIZE_LIMITS[tier] || FILE_SIZE_LIMITS.free;
+    if (file.size > maxSize) {
+      fs.unlinkSync(file.path);
+      res.status(413).json({ error: `File too large. Max ${(maxSize / 1024 / 1024).toFixed(0)}MB for ${tier} tier.` });
+      return;
+    }
+
+    // Validate magic bytes
+    const buffer = fs.readFileSync(file.path);
+    if (!validateFileType(buffer, file.mimetype)) {
+      fs.unlinkSync(file.path);
+      res.status(400).json({ error: 'File type mismatch. The file contents don\'t match the declared type.' });
+      return;
+    }
+
+    // Move to workflow-specific directory
+    const wfDir = path.join(uploadsDir, paramId(req));
+    if (!fs.existsSync(wfDir)) fs.mkdirSync(wfDir, { recursive: true });
+    const destPath = path.join(wfDir, `${Date.now()}_${file.originalname}`);
+    fs.renameSync(file.path, destPath);
+
+    // Process file
+    const result = await processFile(destPath, file.originalname, file.mimetype);
+
+    res.json({
+      path: destPath,
+      originalName: file.originalname,
+      type: result.type,
+      size: file.size,
+      mimeType: file.mimetype,
+      textPreview: result.text.slice(0, 500),
+      rowCount: result.metadata.rowCount,
+      pages: result.metadata.pages,
+      columns: result.rows ? Object.keys(result.rows[0] || {}) : undefined,
+    });
+  } catch (error: any) {
+    console.error('File upload error:', error);
+    res.status(500).json({ error: error.message || 'File processing failed' });
   }
 });
 

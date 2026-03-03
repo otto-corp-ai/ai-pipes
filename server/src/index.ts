@@ -18,7 +18,7 @@ app.use(cors({ origin: process.env.FRONTEND_URL || process.env.CLIENT_URL || 'ht
 
 // Raw body for Stripe webhooks
 app.use('/api/billing/webhook', express.raw({ type: 'application/json' }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
 
 // Request logging
 app.use((req, _res, next) => {

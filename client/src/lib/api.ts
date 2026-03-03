@@ -38,6 +38,23 @@ export const api = {
   listTemplates: () => request<any[]>('/workflows/templates/list'),
   cloneTemplate: (id: string) => request<any>(`/workflows/templates/${id}/clone`, { method: 'POST' }),
 
+  // File Upload
+  uploadFile: async (workflowId: string, file: File) => {
+    const token = localStorage.getItem('token');
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/workflows/${workflowId}/upload`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: 'Upload failed' }));
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    return res.json();
+  },
+
   // API Keys
   listKeys: () => request<any[]>('/keys'),
   addKey: (data: { provider: string; key: string; label?: string }) =>

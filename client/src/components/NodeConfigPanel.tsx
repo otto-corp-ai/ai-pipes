@@ -1,5 +1,9 @@
-import { X } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { X, Upload, FileText, Loader2 } from 'lucide-react';
 import type { Node } from '@xyflow/react';
+import { useParams } from 'react-router-dom';
+import SmartTextarea from './SmartTextarea';
+import { api } from '../lib/api';
 
 const MODELS = [
   { id: 'gpt-4o', name: 'GPT-4o' },
@@ -29,6 +33,8 @@ const ROUTER_CONDITIONS = [
   { id: 'json_field', name: 'JSON Field Equals' },
 ];
 
+const ACCEPTED_FILE_TYPES = '.pdf,.docx,.csv,.txt,.md,.png,.jpg,.jpeg,.gif,.webp,.mp3,.wav,.m4a';
+
 interface Props {
   node: Node;
   onUpdate: (nodeId: string, data: any) => void;
@@ -36,8 +42,42 @@ interface Props {
 }
 
 export default function NodeConfigPanel({ node, onUpdate, onClose }: Props) {
+  const { id: workflowId } = useParams<{ id: string }>();
   const data = node.data as Record<string, any>;
   const update = (key: string, value: any) => onUpdate(node.id, { ...data, [key]: value });
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleFileUpload = useCallback(async (file: File) => {
+    if (!workflowId) return;
+    setUploading(true);
+    try {
+      const result = await api.uploadFile(workflowId, file);
+      onUpdate(node.id, {
+        ...data,
+        filePath: result.path,
+        fileName: result.originalName,
+        fileSize: result.size,
+        fileMimeType: result.mimeType,
+        fileType: result.type,
+        textPreview: result.textPreview,
+        columns: result.columns,
+        rowCount: result.rowCount,
+        pages: result.pages,
+      });
+    } catch (err: any) {
+      alert('Upload failed: ' + err.message);
+    } finally {
+      setUploading(false);
+    }
+  }, [workflowId, node.id, data, onUpdate]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFileUpload(file);
+  }, [handleFileUpload]);
 
   return (
     <div className="w-80 bg-navy-800 border-l border-navy-700 h-full overflow-y-auto">
@@ -57,10 +97,13 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: Props) {
         {node.type === 'text_input' && (
           <div>
             <label className="block text-xs font-medium text-navy-400 mb-1">Text Content</label>
-            <textarea value={data.text || ''} onChange={e => update('text', e.target.value)} rows={6}
-              placeholder="Enter text or use {{input}} for workflow input..."
-              className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand-500 resize-none" />
-            <p className="text-xs text-navy-500 mt-1">Use {'{{input}}'} for workflow input, {'{{nodeId.output}}'} for node outputs</p>
+            <SmartTextarea
+              value={data.text || ''}
+              onChange={v => update('text', v)}
+              currentNodeId={node.id}
+              placeholder="Enter text or use variables from other nodes..."
+              rows={6}
+            />
           </div>
         )}
 
@@ -76,15 +119,23 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: Props) {
             </div>
             <div>
               <label className="block text-xs font-medium text-navy-400 mb-1">System Prompt</label>
-              <textarea value={data.systemPrompt || ''} onChange={e => update('systemPrompt', e.target.value)} rows={3}
+              <SmartTextarea
+                value={data.systemPrompt || ''}
+                onChange={v => update('systemPrompt', v)}
+                currentNodeId={node.id}
                 placeholder="You are a helpful assistant..."
-                className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500 resize-none" />
+                rows={3}
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-navy-400 mb-1">User Prompt</label>
-              <textarea value={data.userPrompt || ''} onChange={e => update('userPrompt', e.target.value)} rows={4}
-                placeholder="Use {{input}} or {{nodeId.output}} variables..."
-                className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand-500 resize-none" />
+              <SmartTextarea
+                value={data.userPrompt || ''}
+                onChange={v => update('userPrompt', v)}
+                currentNodeId={node.id}
+                placeholder="Click + Variable to reference other nodes..."
+                rows={4}
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-navy-400 mb-1">Temperature: {data.temperature ?? 0.7}</label>
@@ -117,9 +168,13 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: Props) {
             {(data.operation === 'format') && (
               <div>
                 <label className="block text-xs font-medium text-navy-400 mb-1">Template</label>
-                <textarea value={data.template || ''} onChange={e => update('template', e.target.value)} rows={3}
+                <SmartTextarea
+                  value={data.template || ''}
+                  onChange={v => update('template', v)}
+                  currentNodeId={node.id}
                   placeholder="Use {{value}} for the input text..."
-                  className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand-500 resize-none" />
+                  rows={3}
+                />
               </div>
             )}
             {(data.operation === 'replace') && (
@@ -198,6 +253,90 @@ export default function NodeConfigPanel({ node, onUpdate, onClose }: Props) {
               <option value="clipboard">Copy to Clipboard</option>
             </select>
           </div>
+        )}
+
+        {/* File Input */}
+        {node.type === 'file_input' && (
+          <>
+            {/* Upload area */}
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
+                dragOver ? 'border-brand-500 bg-brand-500/10' : 'border-navy-600 hover:border-navy-500'
+              }`}
+            >
+              {uploading ? (
+                <div className="flex flex-col items-center gap-2 text-navy-400">
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                  <span className="text-xs">Processing file...</span>
+                </div>
+              ) : data.fileName ? (
+                <div className="flex flex-col items-center gap-2">
+                  <FileText className="w-6 h-6 text-teal-400" />
+                  <div className="text-sm text-navy-200 font-medium">{data.fileName}</div>
+                  <div className="text-xs text-navy-500">
+                    {(data.fileSize / 1024).toFixed(1)}KB • {data.fileType?.toUpperCase()}
+                    {data.pages ? ` • ${data.pages} pages` : ''}
+                    {data.rowCount ? ` • ${data.rowCount} rows` : ''}
+                  </div>
+                  <label className="text-xs text-brand-400 hover:text-brand-300 cursor-pointer">
+                    Replace file
+                    <input type="file" accept={ACCEPTED_FILE_TYPES} className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); }} />
+                  </label>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center gap-2 cursor-pointer text-navy-400 hover:text-navy-300">
+                  <Upload className="w-6 h-6" />
+                  <span className="text-sm">Drop a file here or click to browse</span>
+                  <span className="text-[10px] text-navy-500">PDF, DOCX, CSV, TXT, Images, Audio</span>
+                  <input type="file" accept={ACCEPTED_FILE_TYPES} className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); }} />
+                </label>
+              )}
+            </div>
+
+            {/* Supported formats */}
+            <div className="flex flex-wrap gap-1">
+              {['PDF', 'DOCX', 'CSV', 'TXT', 'IMG', 'Audio'].map(f => (
+                <span key={f} className="text-[10px] bg-navy-900 text-navy-500 px-1.5 py-0.5 rounded">{f}</span>
+              ))}
+            </div>
+
+            {/* Text preview */}
+            {data.textPreview && (
+              <div>
+                <label className="block text-xs font-medium text-navy-400 mb-1">Content Preview</label>
+                <div className="bg-navy-900 border border-navy-700 rounded-lg p-2 text-xs text-navy-300 font-mono max-h-32 overflow-auto whitespace-pre-wrap">
+                  {data.textPreview}
+                </div>
+              </div>
+            )}
+
+            {/* CSV options */}
+            {data.fileType === 'csv' && (
+              <>
+                {data.columns && data.columns.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-medium text-navy-400 mb-1">Columns</label>
+                    <div className="flex flex-wrap gap-1">
+                      {data.columns.map((col: string) => (
+                        <span key={col} className="text-[10px] bg-brand-500/20 text-brand-300 px-1.5 py-0.5 rounded">{col}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="loopMode" checked={data.loopMode || false}
+                    onChange={e => update('loopMode', e.target.checked)}
+                    className="accent-brand-500" />
+                  <label htmlFor="loopMode" className="text-xs text-navy-300">Process each row separately</label>
+                </div>
+              </>
+            )}
+          </>
         )}
       </div>
     </div>
